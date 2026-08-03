@@ -2,9 +2,19 @@
 of truth — this client never caches anything locally."""
 
 import json
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
+
+
+def _retry_after(detail: str) -> float:
+    """Seconds to wait on a 429, from Discourse's error body (default 5, cap 30)."""
+    try:
+        wait = float(json.loads(detail)["extras"]["wait_seconds"])
+    except Exception:
+        wait = 5.0
+    return min(max(wait, 1.0), 30.0) + 1.0
 
 
 class Discourse:
@@ -23,16 +33,22 @@ class Discourse:
         if data is not None:
             body = urllib.parse.urlencode(data, doseq=True).encode()
             headers["Content-Type"] = "application/x-www-form-urlencoded"
-        req = urllib.request.Request(
-            self.url + path, data=body, method=method, headers=headers
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=30) as r:
-                raw = r.read().decode()
-                return json.loads(raw) if raw.strip() else {}
-        except urllib.error.HTTPError as e:
-            detail = e.read().decode(errors="replace")
-            raise RuntimeError(f"{method} {path} -> HTTP {e.code}: {detail}") from None
+        for attempt in range(5):
+            req = urllib.request.Request(
+                self.url + path, data=body, method=method, headers=headers
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    raw = r.read().decode()
+                    return json.loads(raw) if raw.strip() else {}
+            except urllib.error.HTTPError as e:
+                detail = e.read().decode(errors="replace")
+                if e.code == 429 and attempt < 4:
+                    time.sleep(_retry_after(detail))
+                    continue
+                raise RuntimeError(
+                    f"{method} {path} -> HTTP {e.code}: {detail}"
+                ) from None
 
     # --- reads -------------------------------------------------------------
 

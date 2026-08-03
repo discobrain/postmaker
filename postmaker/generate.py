@@ -35,7 +35,9 @@ class GenError(RuntimeError):
     pass
 
 
-def generate_all(cfg, title: str, body: str, networks: list) -> dict[str, list[Post]]:
+def generate_all(
+    cfg, title: str, body: str, networks: list, date: str = ""
+) -> dict[str, list[Post]]:
     """Generate every network in `networks` in one session.
 
     Returns {network_key: [Post, ...]}. Raises GenError if, after MAX_ATTEMPTS,
@@ -62,7 +64,9 @@ def generate_all(cfg, title: str, body: str, networks: list) -> dict[str, list[P
         for _ in range(MAX_ATTEMPTS):
             for n in networks:
                 _clear(os.path.join(work, "out", n.key))
-            self_prompt = _build_instruction(cfg, networks, bool(valid_images)) + extra
+            self_prompt = (
+                _build_instruction(cfg, networks, bool(valid_images), date) + extra
+            )
             proc = subprocess.run(
                 [
                     cfg.claude_bin,
@@ -116,7 +120,7 @@ def generate(cfg, network, title: str, body: str) -> list[Post]:
     return generate_all(cfg, title, body, [network]).get(network.key, [])
 
 
-def _build_instruction(cfg, networks: list, has_images: bool) -> str:
+def _build_instruction(cfg, networks: list, has_images: bool, date: str) -> str:
     base = _read(cfg.base_prompt).strip() if os.path.exists(cfg.base_prompt) else ""
     lines = [
         base,
@@ -146,6 +150,20 @@ def _build_instruction(cfg, networks: list, has_images: bool) -> str:
             )
         else:
             lines.append(f"One file out/{n.key}/01.txt. Long-form, no length limit.")
+        if n.frontmatter:
+            lines.append(
+                f"Begin out/{n.key}/01.txt with YAML frontmatter, then a blank "
+                "line, then the post body as clean Markdown:\n"
+                "---\n"
+                'title: "<the post title in English>"\n'
+                'description: "<one plain sentence summarizing the post>"\n'
+                f"date: {date}\n"
+                "---\n"
+                f"Use exactly that date ({date}). Keep title and description "
+                "faithful to the note, no em dashes."
+            )
+        else:
+            lines.append("Plain text only. No Markdown, no formatting.")
         if spec:
             lines.append(spec)
     return "\n".join(lines)

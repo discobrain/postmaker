@@ -87,9 +87,10 @@ def process_topic(cfg, dc: Discourse, topic: dict) -> None:
         return
 
     # One session for all draftable networks -> consistent English rendering.
+    date = (topic.get("created_at") or "")[:10]  # YYYY-MM-DD for the site frontmatter
     log(f"topic {tid}: generating {[n.key for n in draftable]} in one session")
     try:
-        results = generate_all(cfg, title, body, draftable)
+        results = generate_all(cfg, title, body, draftable, date)
     except GenError as e:
         log(f"topic {tid}: generation failed: {e}")
         return

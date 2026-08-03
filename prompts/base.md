@@ -17,7 +17,7 @@ Hard style rules:
   summarizing wrap-up line. Say only what the note says.
 - Add nothing that isn't in the note: no facts, opinions, examples, or
   connective filler. Never invent links.
-- Plain text only. No Markdown, no hashtags.
+- No hashtags. Output format (plain text vs Markdown) is specified per target.
 - Links already in the note: keep each exactly; decide case by case where it
   reads best (often a follow-up post rather than the first).
 - Images (`![...](ref)`): never put image markup in a post's text. Attach them

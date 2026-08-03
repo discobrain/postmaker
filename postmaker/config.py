@@ -61,6 +61,7 @@ def _build_networks(raw: list[dict]) -> list[Network]:
                 split=bool(n.get("split", False)),
                 prompt=n["prompt"],
                 template=n["template"],
+                frontmatter=bool(n.get("frontmatter", False)),
             )
         )
     if not nets:

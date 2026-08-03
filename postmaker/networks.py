@@ -13,6 +13,7 @@ class Network:
     split: bool         # allow splitting into a thread on overflow
     prompt: str         # path to the translation/adaptation system prompt
     template: str       # path to the Discourse comment template
+    frontmatter: bool   # emit YAML frontmatter (title/description/date); Markdown body
 
 
 def draft_tag(key: str) -> str:

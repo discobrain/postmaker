@@ -17,6 +17,7 @@ limit = 0                   # 0 = unlimited (long-form website version)
 split = false
 prompt = "prompts/site.md"
 template = "templates/site.md"
+frontmatter = true          # emit YAML frontmatter (title/description/date), Markdown body
 
 [[networks]]
 key = "threads"
