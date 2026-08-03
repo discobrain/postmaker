@@ -1,9 +1,8 @@
 """The poll loop and per-topic orchestration.
 
 State lives entirely in Discourse TAGS — we never parse comment bodies:
-  - bare `<key>` (legacy, manual)  -> that network already published
-  - `<key>-draft`                  -> draft ready (set here, after posting)
-  - `<key>-published`              -> published (set by the publisher tool)
+  - `<key>-draft`      -> draft ready (set here, after posting)
+  - `<key>-published`  -> published (set by the publisher tool)
 Templates are presentation only; nothing functional depends on their text.
 """
 
@@ -28,9 +27,8 @@ def _set_tag(cfg, dc: Discourse, topic_id: int, tags: set[str], key: str) -> Non
 
 
 def _handled(tags: set[str], key: str) -> bool:
-    """A network is handled once its draft is ready or it's published. A bare
-    legacy tag (e.g. `threads`) counts as manually-published — skip that network."""
-    return key in tags or draft_tag(key) in tags or published_tag(key) in tags
+    """A network is handled once its draft is ready or it's published."""
+    return draft_tag(key) in tags or published_tag(key) in tags
 
 
 def process_topic(cfg, dc: Discourse, topic: dict) -> None:
