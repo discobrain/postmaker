@@ -1,14 +1,16 @@
-"""Text generation via the Claude Code CLI, file-based.
+"""Text generation via the Claude Code CLI, file-based, one session for all
+networks.
 
-For each network we create an isolated temp dir containing just `note.md`, then
-ask `claude -p` to WRITE the result as numbered post files `out/01.md`,
-`out/02.md`, … — one file per post in the thread. We read those files back
-verbatim. Nothing depends on parsing stdout, so stray model chatter can't leak
-into a post, and the thread length is simply the number of files.
+For a topic we create an isolated temp dir with the note as `note.md` and ask
+`claude -p` (once) to WRITE each network's posts as plain-text files under
+`out/<network>/NN.txt`. Doing every network in a single session keeps the
+English rendering consistent across them (no divergent translations).
 
-The LLM owns splitting and link/image placement (it understands the content).
-The code only VERIFIES each post is within the platform limit and, on a miss,
-re-runs with feedback. The code never edits the text itself."""
+We read the files back verbatim — nothing depends on parsing stdout, so model
+chatter can't leak into a post and a thread's length is just its file count.
+The LLM owns splitting and link placement; the code only VERIFIES each post is
+within the platform limit and, on a miss, re-runs with feedback. It never edits
+the text itself."""
 
 import glob
 import os
@@ -17,43 +19,38 @@ import shutil
 import subprocess
 import tempfile
 
-from .networks import Network
-
 MAX_ATTEMPTS = 3
-
-_INSTRUCTION = (
-    "Read note.md in the current directory. Produce the {label} version of it, "
-    "following the system instructions. Write each post as its own PLAIN-TEXT "
-    "file under out/: out/01.txt, out/02.txt, … in order. A single post means "
-    "only out/01.txt. Each file must contain ONLY that post's exact text as plain "
-    "text — no Markdown, no formatting, no headings, no numbering, no commentary, "
-    "nothing but what a reader should see. Overwrite any files already in out/."
-)
 
 
 class GenError(RuntimeError):
     pass
 
 
-def generate(cfg, network: Network, title: str, body: str) -> list[str]:
-    """Return the post parts for `network` (1 = single post, >1 = thread).
+def generate_all(cfg, title: str, body: str, networks: list) -> dict[str, list[str]]:
+    """Generate every network in `networks` in one session.
 
-    Raises GenError if the LLM can't fit the limit after MAX_ATTEMPTS — we would
-    rather skip the topic than post a badly-cut thread."""
-    if not os.path.exists(network.prompt):
-        raise GenError(f"missing prompt file: {network.prompt}")
+    Returns {network_key: [post, ...]}. Raises GenError if, after MAX_ATTEMPTS,
+    a network is missing output or still over its limit — better to skip than
+    post something broken."""
+    networks = list(networks)
+    if not networks:
+        return {}
+    for n in networks:
+        if not os.path.exists(n.prompt):
+            raise GenError(f"missing prompt file: {n.prompt}")
 
     work = tempfile.mkdtemp(prefix="postmaker-")
     try:
         _write(os.path.join(work, "note.md"), f"# {title}\n\n{body}".strip() + "\n")
-        out_dir = os.path.join(work, "out")
-        os.makedirs(out_dir, exist_ok=True)
+        for n in networks:
+            os.makedirs(os.path.join(work, "out", n.key), exist_ok=True)
 
         extra = ""
-        over: list[tuple[int, int]] = []
+        problem = ""
         for _ in range(MAX_ATTEMPTS):
-            _clear(out_dir)
-            self_prompt = _INSTRUCTION.format(label=network.label) + extra
+            for n in networks:
+                _clear(os.path.join(work, "out", n.key))
+            self_prompt = _build_instruction(cfg, networks) + extra
             proc = subprocess.run(
                 [
                     cfg.claude_bin,
@@ -61,8 +58,6 @@ def generate(cfg, network: Network, title: str, body: str) -> list[str]:
                     self_prompt,
                     "--model",
                     cfg.claude_model,
-                    "--append-system-prompt-file",
-                    os.path.abspath(network.prompt),
                     "--permission-mode",
                     "acceptEdits",
                 ],
@@ -71,27 +66,60 @@ def generate(cfg, network: Network, title: str, body: str) -> list[str]:
                 text=True,
             )
             if proc.returncode != 0:
-                raise GenError(
-                    f"claude failed for {network.key}: {proc.stderr.strip()[:500]}"
-                )
-            parts = _read_parts(out_dir)
-            if not parts:
-                raise GenError(
-                    f"{network.key}: no out/*.md produced "
-                    f"(stdout: {proc.stdout.strip()[:200]!r})"
-                )
-            over = _over_limit(network, parts)
-            if not over:
-                return parts
-            extra = "\n\n" + _feedback(network, over)
+                raise GenError(f"claude failed: {proc.stderr.strip()[:500]}")
 
-        detail = ", ".join(f"post {i}={n}>{network.limit}" for i, n in over)
-        raise GenError(
-            f"{network.key}: LLM exceeded {network.limit} chars after "
-            f"{MAX_ATTEMPTS} attempts ({detail})"
-        )
+            results = {
+                n.key: _read_parts(os.path.join(work, "out", n.key)) for n in networks
+            }
+            missing = [n.key for n in networks if not results[n.key]]
+            if missing:
+                problem = f"no output written for: {', '.join(missing)}"
+                extra = "\n\n" + f"You wrote no file for: {', '.join(missing)}. " + (
+                    "Write out/<network>/01.txt for each of them."
+                )
+                continue
+
+            over = {n.key: _over_limit(n, results[n.key]) for n in networks}
+            over = {k: v for k, v in over.items() if v}
+            if not over:
+                return results
+            problem = f"over limit: {over}"
+            extra = "\n\n" + _feedback(networks, over)
+
+        raise GenError(f"generation failed after {MAX_ATTEMPTS} attempts ({problem})")
     finally:
         shutil.rmtree(work, ignore_errors=True)
+
+
+def generate(cfg, network, title: str, body: str) -> list[str]:
+    """Single-network convenience wrapper (used by the `gen` CLI command)."""
+    return generate_all(cfg, title, body, [network]).get(network.key, [])
+
+
+def _build_instruction(cfg, networks: list) -> str:
+    base = _read(cfg.base_prompt).strip() if os.path.exists(cfg.base_prompt) else ""
+    lines = [
+        base,
+        "",
+        "Write plain-text files (no Markdown, no formatting) exactly as specified "
+        "below. Each file contains ONLY that post's exact text — no headings, no "
+        "numbering, no commentary. Overwrite any files already present.",
+    ]
+    for n in networks:
+        spec = _read(n.prompt).strip()
+        lines.append("")
+        lines.append(f"## {n.label}  ->  out/{n.key}/")
+        if n.limit:
+            lines.append(
+                f"Each post <= {n.limit} characters. A single post is "
+                f"out/{n.key}/01.txt. Split into out/{n.key}/01.txt, 02.txt, … "
+                f"(one post per file) only if it cannot fit; do not number the text."
+            )
+        else:
+            lines.append(f"One file out/{n.key}/01.txt. Long-form, no length limit.")
+        if spec:
+            lines.append(spec)
+    return "\n".join(lines)
 
 
 def _read_parts(out_dir: str) -> list[str]:
@@ -105,19 +133,24 @@ def _natural_key(path: str) -> int:
     return int(nums[0]) if nums else 0
 
 
-def _over_limit(network: Network, parts: list[str]) -> list[tuple[int, int]]:
+def _over_limit(network, parts: list[str]) -> list[tuple[int, int]]:
     if not network.limit:
         return []
     return [(i, len(p)) for i, p in enumerate(parts, 1) if len(p) > network.limit]
 
 
-def _feedback(network: Network, over: list[tuple[int, int]]) -> str:
-    lines = "\n".join(f"- post {i} is {n} characters" for i, n in over)
+def _feedback(networks: list, over: dict) -> str:
+    by_key = {n.key: n for n in networks}
+    blocks = []
+    for key, items in over.items():
+        n = by_key[key]
+        rows = "; ".join(f"post {i} is {c} chars" for i, c in items)
+        blocks.append(f"- {n.label}: {rows} (limit {n.limit})")
     return (
-        f"Your previous attempt exceeded the {network.limit}-character limit:\n"
-        f"{lines}\n"
-        f"Rewrite so EVERY post is at most {network.limit} characters. Split into "
-        "more posts if needed. Never split a sentence or a thought across posts."
+        "Some posts exceeded their limit:\n"
+        + "\n".join(blocks)
+        + "\nRewrite those so every post fits. Split into more files if needed. "
+        "Never split a sentence or a thought across posts."
     )
 
 

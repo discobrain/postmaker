@@ -11,7 +11,7 @@ import time
 
 from . import render
 from .discourse import Discourse
-from .generate import GenError, generate
+from .generate import GenError, generate_all
 from .networks import draft_tag, published_tag
 
 
@@ -86,6 +86,14 @@ def process_topic(cfg, dc: Discourse, topic: dict) -> None:
     if not draftable:
         return
 
+    # One session for all draftable networks -> consistent English rendering.
+    log(f"topic {tid}: generating {[n.key for n in draftable]} in one session")
+    try:
+        results = generate_all(cfg, title, body, draftable)
+    except GenError as e:
+        log(f"topic {tid}: generation failed: {e}")
+        return
+
     # Reserved service comment: create once, on the first pass that drafts this
     # topic (i.e. when it carries none of our -draft tags yet).
     first_touch = not any(draft_tag(n.key) in tags for n in cfg.networks)
@@ -95,11 +103,9 @@ def process_topic(cfg, dc: Discourse, topic: dict) -> None:
             dc.create_post(tid, render.render_stats(cfg))
 
     for net in draftable:
-        log(f"topic {tid}: generating {net.key} draft")
-        try:
-            parts = generate(cfg, net, title, body)
-        except GenError as e:
-            log(f"topic {tid}: {net.key} generation failed: {e}")
+        parts = results.get(net.key) or []
+        if not parts:
+            log(f"topic {tid}: {net.key} produced no output, skipping")
             continue
         comment = render.render_draft(net, title, parts)
         if cfg.dry_run:
