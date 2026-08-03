@@ -50,13 +50,8 @@ def _set_tag(cfg, dc: Discourse, topic_id: int, tags: set[str], key: str) -> Non
     if key in tags or cfg.dry_run:
         tags.add(key)
         return
-    try:
-        dc.set_tags(topic_id, sorted(tags | {key}))
-        tags.add(key)
-    except Exception as e:
-        # No permission to tag (bot isn't staff)? Don't crash — the draft is
-        # already posted; the tag can be set by hand.
-        log(f"topic {topic_id}: could not set tag '{key}' ({e}); set it manually")
+    dc.set_tags(topic_id, sorted(tags | {key}))
+    tags.add(key)
 
 
 def _handled(tags: set[str], key: str) -> bool:
@@ -99,14 +94,12 @@ def process_topic(cfg, dc: Discourse, topic: dict) -> None:
         log(f"topic {tid}: generation failed: {e}")
         return
 
-    # Reserved service comment: create once, on the first pass that drafts this
-    # topic (i.e. when it carries none of our -draft tags yet).
+    # Commit each network tag-FIRST, then post: if we lack permission to tag,
+    # the very first _set_tag raises before anything is posted — no orphaned
+    # comment, no duplicate on the next pass. The reserved service comment is
+    # created once, just before the first draft (so it sits right after post #1).
     first_touch = not any(draft_tag(n.key) in tags for n in cfg.networks)
-    if first_touch:
-        log(f"topic {tid}: creating service comment")
-        if not cfg.dry_run:
-            dc.create_post(tid, render.render_stats(cfg))
-
+    posted_stats = False
     for net in draftable:
         parts = results.get(net.key) or []
         if not parts:
@@ -116,8 +109,11 @@ def process_topic(cfg, dc: Discourse, topic: dict) -> None:
         if cfg.dry_run:
             log(f"topic {tid}: [dry-run] {net.key} ({len(parts)} part(s))\n{comment}")
             continue
-        dc.create_post(tid, comment)
         _set_tag(cfg, dc, tid, tags, draft_tag(net.key))
+        if first_touch and not posted_stats:
+            dc.create_post(tid, render.render_stats(cfg))
+            posted_stats = True
+        dc.create_post(tid, comment)
 
 
 def check(cfg, dc: Discourse) -> None:
