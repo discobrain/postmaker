@@ -31,7 +31,7 @@
 
       devShells = forAll (pkgs: {
         default = pkgs.mkShell {
-          packages = [ pkgs.python3 pkgs.jq ];
+          packages = [ pkgs.python3 pkgs.jq pkgs.tmux ];
           shellHook = ''
             echo "postmaker dev shell — run: python -m postmaker <run|once|gen>"
           '';
