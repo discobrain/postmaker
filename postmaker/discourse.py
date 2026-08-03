@@ -57,6 +57,23 @@ class Discourse:
     def get_post_raw(self, post_id: int) -> str:
         return self._request("GET", f"/posts/{post_id}.json").get("raw", "") or ""
 
+    def probe(self, path: str, auth: bool = True) -> dict:
+        """Non-raising GET for diagnostics: returns {status, body}."""
+        headers = (
+            dict(self.headers)
+            if auth
+            else {"Accept": "application/json", "User-Agent": "postmaker/0.1"}
+        )
+        req = urllib.request.Request(self.url + path, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                body = r.read().decode()
+                return {"status": r.status, "body": json.loads(body) if body.strip() else {}}
+        except urllib.error.HTTPError as e:
+            return {"status": e.code, "body": e.read().decode(errors="replace")}
+        except Exception as e:  # network/DNS/TLS
+            return {"status": None, "body": str(e)}
+
     # --- writes ------------------------------------------------------------
 
     def create_post(self, topic_id: int, raw: str) -> dict:

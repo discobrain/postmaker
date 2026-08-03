@@ -82,6 +82,33 @@ def process_topic(cfg, dc: Discourse, topic: dict) -> None:
         _ensure_tag(cfg, dc, tid, tags, net.key)
 
 
+def check(cfg, dc: Discourse) -> None:
+    """Read-only auth diagnostic. Prints no secret values — only presence,
+    HTTP statuses, and (if auth works) the server-confirmed username."""
+    from urllib.parse import urlsplit
+
+    host = urlsplit(cfg.url)
+    log(f"url: {host.scheme}://{host.netloc}")
+    log(f"api key set: {bool(cfg.api_key)} (length {len(cfg.api_key)})")
+    log(f"api username set: {bool(cfg.api_username)} (length {len(cfg.api_username)})")
+
+    about = dc.probe("/about.json", auth=False)
+    log(f"GET /about.json (no auth): HTTP {about['status']}  <- confirms URL + reachability")
+
+    sess = dc.probe("/session/current.json", auth=True)
+    log(f"GET /session/current.json (auth): HTTP {sess['status']}")
+    if sess["status"] == 200:
+        user = (sess["body"].get("current_user") or {}) if isinstance(sess["body"], dict) else {}
+        log(f"OK — authenticated as '{user.get('username')}'")
+    else:
+        log(
+            "AUTH FAILED. Checklist: (1) key created under Admin -> API; "
+            "(2) key scope is Global (or Granular incl. read topics/tags); "
+            "(3) DISCOURSE_API_USERNAME is an EXACT existing username; "
+            "(4) for a Single-User key it must match that key's user."
+        )
+
+
 def list_scope(cfg, dc: Discourse) -> None:
     """Read-only: show which tagged topics are in scope. No generation, no posting."""
     ts = dc.topics_with_tag(cfg.tag)
