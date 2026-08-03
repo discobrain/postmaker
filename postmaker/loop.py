@@ -6,6 +6,7 @@ State lives entirely in Discourse TAGS — we never parse comment bodies:
 Templates are presentation only; nothing functional depends on their text.
 """
 
+import re
 import time
 
 from . import render
@@ -16,6 +17,33 @@ from .networks import draft_tag, published_tag
 
 def log(msg: str) -> None:
     print(f"[postmaker] {msg}", flush=True)
+
+
+def _note_refs(cfg, body: str) -> set[int]:
+    """Topic ids the note links to on our own Discourse instance."""
+    pat = re.escape(cfg.url) + r"/t/(?:[^/\s)]+/)?(\d+)"
+    return {int(m.group(1)) for m in re.finditer(pat, body)}
+
+
+def _unpublished_deps(cfg, dc: Discourse, body: str, net_key: str, self_id: int) -> set[int]:
+    """Linked workflow notes (public + in category) not yet published to this
+    network. If any exist, this network's draft can't be prepared yet."""
+    unmet: set[int] = set()
+    for rid in _note_refs(cfg, body):
+        if rid == self_id:
+            continue
+        try:
+            target = dc.get_topic(rid)
+        except Exception:
+            continue  # unreachable link -> not a workflow dependency
+        ttags = set(target.get("tags") or [])
+        if cfg.tag not in ttags:
+            continue  # not a publishable note -> not a dependency
+        if cfg.category_id is not None and target.get("category_id") != cfg.category_id:
+            continue
+        if published_tag(net_key) not in ttags:
+            unmet.add(rid)
+    return unmet
 
 
 def _set_tag(cfg, dc: Discourse, topic_id: int, tags: set[str], key: str) -> None:
@@ -45,6 +73,19 @@ def process_topic(cfg, dc: Discourse, topic: dict) -> None:
         return
     body = dc.get_post_raw(posts[0]["id"])
 
+    # Dependency gate (BEFORE any LLM call): if the note links to another workflow
+    # note that isn't published to this network yet, we can't prepare it — skip
+    # and retry on a later pass once the dependency is published.
+    draftable = []
+    for net in to_draft:
+        unmet = _unpublished_deps(cfg, dc, body, net.key, tid)
+        if unmet:
+            log(f"topic {tid}: {net.key} waiting on deps not yet published: {sorted(unmet)}")
+        else:
+            draftable.append(net)
+    if not draftable:
+        return
+
     # Reserved service comment: create once, on the first pass that drafts this
     # topic (i.e. when it carries none of our -draft tags yet).
     first_touch = not any(draft_tag(n.key) in tags for n in cfg.networks)
@@ -53,7 +94,7 @@ def process_topic(cfg, dc: Discourse, topic: dict) -> None:
         if not cfg.dry_run:
             dc.create_post(tid, render.render_stats(cfg))
 
-    for net in to_draft:
+    for net in draftable:
         log(f"topic {tid}: generating {net.key} draft")
         try:
             parts = generate(cfg, net, title, body)
