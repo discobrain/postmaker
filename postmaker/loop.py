@@ -71,17 +71,17 @@ def _rebake(cfg, dc: Discourse, topic: dict, tags: set[str]) -> None:
     Keeps the service comment and any <net>-published. Mutates `tags` in place."""
     tid = topic["id"]
     label_to_key = {n.label: n.key for n in cfg.networks}
-    removed_nets: set[str] = set()
     for p in dc.all_posts(topic):
         if p.get("username") != cfg.api_username:
             continue
         m = re.search(r'\[details="([^"]+)"\]', dc.get_post_raw(p["id"]))
         if m and m.group(1) in label_to_key:
-            removed_nets.add(label_to_key[m.group(1)])
             log(f"topic {tid}: rebake, deleting {m.group(1)} draft (post {p['id']})")
             if not cfg.dry_run:
                 dc.delete_post(p["id"])
-    new_tags = tags - {draft_tag(k) for k in removed_nets} - {cfg.rebake_tag}
+    # Drop every <net>-draft tag (even orphaned ones with no comment) + the
+    # rebake tag, so the pass regenerates all unpublished networks cleanly.
+    new_tags = tags - {draft_tag(n.key) for n in cfg.networks} - {cfg.rebake_tag}
     if new_tags != tags:
         if not cfg.dry_run:
             dc.set_tags(tid, sorted(new_tags))
