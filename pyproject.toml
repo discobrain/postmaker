@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "postmaker"
+version = "0.1.0"
+description = "Draft Discourse notes into per-network (site/Threads/Bluesky) posts for review"
+requires-python = ">=3.11"
+dependencies = []              # stdlib only; text generation shells out to the `claude` CLI
+
+[project.scripts]
+postmaker = "postmaker.__main__:main"
+
+[tool.setuptools]
+packages = ["postmaker"]

@@ -1,0 +1,37 @@
+# postmaker configuration.
+# Secrets (Discourse URL / API key / username) are NOT here — they come from the
+# environment. Everything below is structure: which networks exist, their limits,
+# and which prompt + comment template each one uses.
+
+tag = "public"              # topics carrying this tag get drafted
+category = 5                # only draft topics in this category id (omit = any)
+poll_interval = 60          # seconds between polls
+claude_model = "claude-opus-4-8"
+stats_template = "templates/stats.md"
+
+[[networks]]
+key = "site"                # also the Discourse tag set when this draft is ready
+label = "Site"
+emoji = "🌐"
+limit = 0                   # 0 = unlimited (long-form website version)
+split = false
+prompt = "prompts/site.md"
+template = "templates/site.md"
+
+[[networks]]
+key = "threads"
+label = "Threads"
+emoji = "🧵"
+limit = 500                 # per-post character limit
+split = true               # overflow -> numbered thread
+prompt = "prompts/threads.md"
+template = "templates/threads.md"
+
+[[networks]]
+key = "bluesky"
+label = "Bluesky"
+emoji = "🦋"
+limit = 300
+split = true
+prompt = "prompts/bluesky.md"
+template = "templates/bluesky.md"
