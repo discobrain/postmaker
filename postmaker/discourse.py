@@ -73,6 +73,22 @@ class Discourse:
     def get_post_raw(self, post_id: int) -> str:
         return self._request("GET", f"/posts/{post_id}.json").get("raw", "") or ""
 
+    def all_posts(self, topic: dict) -> list[dict]:
+        """Every post in a topic, in order. `/t/{id}.json` only returns a window
+        of ~20; fetch the rest by id from post_stream.stream."""
+        stream = topic.get("post_stream") or {}
+        have = {p["id"]: p for p in (stream.get("posts") or [])}
+        order = stream.get("stream") or list(have)
+        missing = [i for i in order if i not in have]
+        tid = topic["id"]
+        for i in range(0, len(missing), 50):
+            chunk = missing[i : i + 50]
+            q = "&".join(f"post_ids[]={pid}" for pid in chunk)
+            data = self._request("GET", f"/t/{tid}/posts.json?{q}")
+            for p in (data.get("post_stream") or {}).get("posts") or []:
+                have[p["id"]] = p
+        return [have[i] for i in order if i in have]
+
     def probe(self, path: str, auth: bool = True) -> dict:
         """Non-raising GET for diagnostics: returns {status, body}."""
         headers = (

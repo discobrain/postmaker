@@ -15,8 +15,22 @@ from .generate import GenError, generate_all
 from .networks import draft_tag, published_tag
 
 
+SERVICE_SENTINEL = "reserved for publication stats"
+SERVICE_COMMENT = f"_📊 postmaker: {SERVICE_SENTINEL}._"
+
+
 def log(msg: str) -> None:
     print(f"[postmaker] {msg}", flush=True)
+
+
+def _has_service(cfg, dc: Discourse, topic: dict) -> bool:
+    """True if this bot's service comment already exists in the topic."""
+    for p in dc.all_posts(topic):
+        if p.get("username") != cfg.api_username:
+            continue
+        if SERVICE_SENTINEL in dc.get_post_raw(p["id"]):
+            return True
+    return False
 
 
 def _note_refs(cfg, body: str) -> set[int]:
@@ -95,6 +109,13 @@ def process_topic(cfg, dc: Discourse, topic: dict) -> None:
         log(f"topic {tid}: generation failed: {e}")
         return
 
+    # Reserved service comment, created BEFORE any draft so on a fresh note it
+    # lands right after the first post. Created once (skip if it already exists).
+    if not _has_service(cfg, dc, topic):
+        log(f"topic {tid}: creating service comment")
+        if not cfg.dry_run:
+            dc.create_post(tid, SERVICE_COMMENT)
+
     # Commit each network tag-FIRST, then post: if we lack permission to tag,
     # the very first _set_tag raises before anything is posted, so there is no
     # orphaned comment and no duplicate on the next pass.
@@ -147,13 +168,13 @@ def reset(cfg, dc: Discourse, topic_id: int) -> None:
     label_to_key = {n.label: n.key for n in cfg.networks}
     removed_nets: set[str] = set()
 
-    for p in (topic.get("post_stream") or {}).get("posts") or []:
+    for p in dc.all_posts(topic):
         if p.get("username") != cfg.api_username:
             continue
         raw = dc.get_post_raw(p["id"])
         m = re.search(r'\[details="([^"]+)"\]', raw)
         is_draft = bool(m and m.group(1) in label_to_key)
-        is_stats = "reserved for publication stats" in raw
+        is_stats = SERVICE_SENTINEL in raw
         if not (is_draft or is_stats):
             continue
         kind = m.group(1) if is_draft else "service"
@@ -170,6 +191,24 @@ def reset(cfg, dc: Discourse, topic_id: int) -> None:
             dc.set_tags(topic_id, sorted(new_tags))
 
 
+def audit(cfg, dc: Discourse) -> None:
+    """Read-only: for each in-scope topic, whether this bot's service comment
+    is present, plus its tags."""
+    missing = []
+    for t in dc.topics_with_tag(cfg.tag):
+        if not _in_scope(cfg, t):
+            continue
+        topic = dc.get_topic(t["id"])
+        has = _has_service(cfg, dc, topic)
+        if not has:
+            missing.append(t["id"])
+        print(
+            f"[{'ok ' if has else 'NO!'} service] id={t['id']} "
+            f"tags={sorted(topic.get('tags') or [])} :: {topic.get('title')}"
+        )
+    log(f"service comment missing on {len(missing)} topic(s): {sorted(missing)}")
+
+
 def reset_all(cfg, dc: Discourse) -> None:
     """Run reset() on every in-scope topic. Respects POSTMAKER_DRY_RUN."""
     for t in dc.topics_with_tag(cfg.tag):
@@ -182,7 +221,7 @@ def show(cfg, dc: Discourse, topic_id: int) -> None:
     """Read-only: print raw markdown of every comment in a topic."""
     topic = dc.get_topic(topic_id)
     log(f"topic {topic_id}: {topic.get('title')!r}  tags={sorted(topic.get('tags') or [])}")
-    for p in (topic.get("post_stream") or {}).get("posts") or []:
+    for p in dc.all_posts(topic):
         print(f"\n--- #{p.get('post_number')} by {p.get('username')} (id {p['id']}) ---")
         print(dc.get_post_raw(p["id"]))
 

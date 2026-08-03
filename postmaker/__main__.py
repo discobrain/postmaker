@@ -4,6 +4,7 @@
   postmaker once         a single pass, then exit
   postmaker check        read-only: diagnose Discourse auth (no secrets printed)
   postmaker topics       read-only: list tagged topics and their scope
+  postmaker audit        read-only: show which topics have the service comment
   postmaker show <id>    read-only: print raw of every comment in a topic
   postmaker reset <id>...  delete this bot's drafts/tags on topic(s) (POSTMAKER_DRY_RUN aware)
   postmaker reset-all    reset every in-scope topic
@@ -55,6 +56,10 @@ def main() -> int:
     if cmd == "topics":
         cfg = config.load()
         loop.list_scope(cfg, Discourse(cfg.url, cfg.api_key, cfg.api_username))
+        return 0
+    if cmd == "audit":
+        cfg = config.load()
+        loop.audit(cfg, Discourse(cfg.url, cfg.api_key, cfg.api_username))
         return 0
     if cmd == "show":
         if not rest:
