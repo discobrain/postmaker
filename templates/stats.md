@@ -1,1 +1,1 @@
-_📊 postmaker — reserved for publication stats._
+_📊 postmaker: reserved for publication stats._

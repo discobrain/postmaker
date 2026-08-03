@@ -79,9 +79,20 @@ class Discourse:
     def create_post(self, topic_id: int, raw: str) -> dict:
         return self._request("POST", "/posts.json", {"topic_id": topic_id, "raw": raw})
 
-    def set_tags(self, topic_id: int, tags: list[str]) -> dict:
-        """Replace the topic's full tag set (Discourse expects the complete list)."""
-        return self._request("PUT", f"/t/-/{topic_id}.json", {"tags[]": tags})
+    def set_tags(self, topic_id: int, tags: list[str]) -> None:
+        """Replace the topic's full tag set (Discourse expects the complete list).
+
+        Verify it actually took: Discourse silently drops tags past
+        max_tags_per_topic and still returns 200, so re-read and raise if any
+        requested tag is missing rather than let the drop pass unnoticed."""
+        self._request("PUT", f"/t/-/{topic_id}.json", {"tags[]": tags})
+        applied = set(self.get_topic(topic_id).get("tags") or [])
+        missing = set(tags) - applied
+        if missing:
+            raise RuntimeError(
+                f"tags not applied to topic {topic_id}: {sorted(missing)} "
+                f"(hit max_tags_per_topic?)"
+            )
 
     def delete_post(self, post_id: int) -> dict:
         return self._request("DELETE", f"/posts/{post_id}.json")
