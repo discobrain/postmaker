@@ -47,11 +47,16 @@ def _unpublished_deps(cfg, dc: Discourse, body: str, net_key: str, self_id: int)
 
 
 def _set_tag(cfg, dc: Discourse, topic_id: int, tags: set[str], key: str) -> None:
-    if key in tags:
+    if key in tags or cfg.dry_run:
+        tags.add(key)
         return
-    tags.add(key)
-    if not cfg.dry_run:
-        dc.set_tags(topic_id, sorted(tags))
+    try:
+        dc.set_tags(topic_id, sorted(tags | {key}))
+        tags.add(key)
+    except Exception as e:
+        # No permission to tag (bot isn't staff)? Don't crash — the draft is
+        # already posted; the tag can be set by hand.
+        log(f"topic {topic_id}: could not set tag '{key}' ({e}); set it manually")
 
 
 def _handled(tags: set[str], key: str) -> bool:
