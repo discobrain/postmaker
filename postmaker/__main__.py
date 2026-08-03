@@ -5,7 +5,8 @@
   postmaker check        read-only: diagnose Discourse auth (no secrets printed)
   postmaker topics       read-only: list tagged topics and their scope
   postmaker show <id>    read-only: print raw of every comment in a topic
-  postmaker reset <id>   delete this bot's drafts/tags on a topic (POSTMAKER_DRY_RUN aware)
+  postmaker reset <id>...  delete this bot's drafts/tags on topic(s) (POSTMAKER_DRY_RUN aware)
+  postmaker reset-all    reset every in-scope topic
   postmaker draft <id>   process a single topic by id (respects POSTMAKER_DRY_RUN)
   postmaker gen <net>    generate <net> from a note on stdin (no Discourse needed)
 """
@@ -65,11 +66,16 @@ def main() -> int:
         return 0
     if cmd == "reset":
         if not rest:
-            print("usage: postmaker reset <topic_id>", file=sys.stderr)
+            print("usage: postmaker reset <topic_id> [<topic_id> ...]", file=sys.stderr)
             return 2
         cfg = config.load()
         dc = Discourse(cfg.url, cfg.api_key, cfg.api_username)
-        loop.reset(cfg, dc, int(rest[0]))
+        for a in rest:
+            loop.reset(cfg, dc, int(a))
+        return 0
+    if cmd == "reset-all":
+        cfg = config.load()
+        loop.reset_all(cfg, Discourse(cfg.url, cfg.api_key, cfg.api_username))
         return 0
     if cmd == "draft":
         if not rest:

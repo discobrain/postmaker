@@ -170,6 +170,14 @@ def reset(cfg, dc: Discourse, topic_id: int) -> None:
             dc.set_tags(topic_id, sorted(new_tags))
 
 
+def reset_all(cfg, dc: Discourse) -> None:
+    """Run reset() on every in-scope topic. Respects POSTMAKER_DRY_RUN."""
+    for t in dc.topics_with_tag(cfg.tag):
+        if not _in_scope(cfg, t):
+            continue
+        reset(cfg, dc, t["id"])
+
+
 def show(cfg, dc: Discourse, topic_id: int) -> None:
     """Read-only: print raw markdown of every comment in a topic."""
     topic = dc.get_topic(topic_id)
