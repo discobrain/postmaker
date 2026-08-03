@@ -1,4 +1,3 @@
-<!-- postmaker:draft:bluesky -->
 ## 🦋 Bluesky draft
 
 {{PARTS}}

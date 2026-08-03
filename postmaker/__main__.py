@@ -4,6 +4,7 @@
   postmaker once         a single pass, then exit
   postmaker check        read-only: diagnose Discourse auth (no secrets printed)
   postmaker topics       read-only: list tagged topics and their scope
+  postmaker draft <id>   process a single topic by id (respects POSTMAKER_DRY_RUN)
   postmaker gen <net>    generate <net> from a note on stdin (no Discourse needed)
 """
 
@@ -49,6 +50,14 @@ def main() -> int:
     if cmd == "topics":
         cfg = config.load()
         loop.list_scope(cfg, Discourse(cfg.url, cfg.api_key, cfg.api_username))
+        return 0
+    if cmd == "draft":
+        if not rest:
+            print("usage: postmaker draft <topic_id>", file=sys.stderr)
+            return 2
+        cfg = config.load()
+        dc = Discourse(cfg.url, cfg.api_key, cfg.api_username)
+        loop.process_topic(cfg, dc, dc.get_topic(int(rest[0])))
         return 0
     if cmd == "gen":
         return _cmd_gen(rest)

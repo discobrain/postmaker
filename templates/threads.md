@@ -1,4 +1,3 @@
-<!-- postmaker:draft:threads -->
 ## 🧵 Threads draft
 
 {{PARTS}}

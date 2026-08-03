@@ -15,8 +15,11 @@ class Network:
     template: str       # path to the Discourse comment template
 
 
-STATS_MARKER = "<!-- postmaker:stats -->"
+def draft_tag(key: str) -> str:
+    """Topic tag meaning: this network's draft is ready (set by the drafter)."""
+    return f"{key}-draft"
 
 
-def draft_marker(key: str) -> str:
-    return f"<!-- postmaker:draft:{key} -->"
+def published_tag(key: str) -> str:
+    """Topic tag meaning: this network is published (set by the publisher)."""
+    return f"{key}-published"

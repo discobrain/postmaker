@@ -1,34 +1,25 @@
 """The poll loop and per-topic orchestration.
 
-State lives entirely in Discourse:
-  - network tag present  -> that network's draft is ready (set by us when done)
-  - hidden comment marker -> dedup / crash-recovery between create and tag
+State lives entirely in Discourse TAGS — we never parse comment bodies:
+  - bare `<key>` (legacy, manual)  -> that network already published
+  - `<key>-draft`                  -> draft ready (set here, after posting)
+  - `<key>-published`              -> published (set by the publisher tool)
+Templates are presentation only; nothing functional depends on their text.
 """
 
-import sys
 import time
 
 from . import render
 from .discourse import Discourse
 from .generate import GenError, generate
-from .networks import STATS_MARKER, draft_marker
+from .networks import draft_tag, published_tag
 
 
 def log(msg: str) -> None:
     print(f"[postmaker] {msg}", flush=True)
 
 
-def _own_raw(cfg, dc: Discourse, topic: dict) -> str:
-    """Concatenated raw of comments authored by our api user (where markers live)."""
-    posts = (topic.get("post_stream") or {}).get("posts") or []
-    chunks = []
-    for p in posts:
-        if p.get("username") == cfg.api_username:
-            chunks.append(dc.get_post_raw(p["id"]))
-    return "\n".join(chunks)
-
-
-def _ensure_tag(cfg, dc: Discourse, topic_id: int, tags: set[str], key: str) -> None:
+def _set_tag(cfg, dc: Discourse, topic_id: int, tags: set[str], key: str) -> None:
     if key in tags:
         return
     tags.add(key)
@@ -36,38 +27,35 @@ def _ensure_tag(cfg, dc: Discourse, topic_id: int, tags: set[str], key: str) -> 
         dc.set_tags(topic_id, sorted(tags))
 
 
+def _handled(tags: set[str], key: str) -> bool:
+    """A network is handled once its draft is ready or it's published. A bare
+    legacy tag (e.g. `threads`) counts as manually-published — skip that network."""
+    return key in tags or draft_tag(key) in tags or published_tag(key) in tags
+
+
 def process_topic(cfg, dc: Discourse, topic: dict) -> None:
     tid = topic["id"]
     title = topic.get("title") or topic.get("fancy_title") or ""
     tags = set(topic.get("tags") or [])
-    keys = [n.key for n in cfg.networks]
 
-    if set(keys).issubset(tags):
-        return  # every network drafted already — nothing to do
+    to_draft = [n for n in cfg.networks if not _handled(tags, n.key)]
+    if not to_draft:
+        return  # every network drafted or published already
 
     posts = (topic.get("post_stream") or {}).get("posts") or []
     if not posts:
         return
-    first_post_id = posts[0]["id"]
-    body = dc.get_post_raw(first_post_id)
-    own_raw = _own_raw(cfg, dc, topic)
+    body = dc.get_post_raw(posts[0]["id"])
 
-    # 1) reserved service comment, always right after the first post
-    if STATS_MARKER not in own_raw:
+    # Reserved service comment: create once, on the first pass that drafts this
+    # topic (i.e. when it carries none of our -draft tags yet).
+    first_touch = not any(draft_tag(n.key) in tags for n in cfg.networks)
+    if first_touch:
         log(f"topic {tid}: creating service comment")
         if not cfg.dry_run:
             dc.create_post(tid, render.render_stats(cfg))
-        own_raw += "\n" + STATS_MARKER
 
-    # 2) one draft comment per network (whose draft isn't ready yet)
-    for net in cfg.networks:
-        if net.key in tags:
-            continue
-        if draft_marker(net.key) in own_raw:
-            # comment exists but tag missing (interrupted last run) -> just tag
-            log(f"topic {tid}: {net.key} draft exists, tagging")
-            _ensure_tag(cfg, dc, tid, tags, net.key)
-            continue
+    for net in to_draft:
         log(f"topic {tid}: generating {net.key} draft")
         try:
             parts = generate(cfg, net, title, body)
@@ -79,7 +67,7 @@ def process_topic(cfg, dc: Discourse, topic: dict) -> None:
             log(f"topic {tid}: [dry-run] {net.key} ({len(parts)} part(s))\n{comment}")
             continue
         dc.create_post(tid, comment)
-        _ensure_tag(cfg, dc, tid, tags, net.key)
+        _set_tag(cfg, dc, tid, tags, draft_tag(net.key))
 
 
 def check(cfg, dc: Discourse) -> None:
@@ -109,22 +97,26 @@ def check(cfg, dc: Discourse) -> None:
         )
 
 
+def _in_scope(cfg, t: dict) -> bool:
+    return cfg.category_id is None or t.get("category_id") == cfg.category_id
+
+
 def list_scope(cfg, dc: Discourse) -> None:
     """Read-only: show which tagged topics are in scope. No generation, no posting."""
     ts = dc.topics_with_tag(cfg.tag)
     scope = f"category={cfg.category_id}" if cfg.category_id is not None else "any category"
-    log(f"tag='{cfg.tag}', {scope}: {len(ts)} topic(s) carry the tag")
+    n_in = sum(1 for t in ts if _in_scope(cfg, t))
+    log(f"tag='{cfg.tag}', {scope}: {len(ts)} carry the tag, {n_in} in scope")
     for t in ts:
-        inscope = cfg.category_id is None or t.get("category_id") == cfg.category_id
         print(
-            f"[{'IN ' if inscope else 'out'}] id={t['id']} "
+            f"[{'IN ' if _in_scope(cfg, t) else 'out'}] id={t['id']} "
             f"cat={t.get('category_id')} tags={t.get('tags')} :: {t.get('title')}"
         )
 
 
 def run_once(cfg, dc: Discourse) -> None:
     for t in dc.topics_with_tag(cfg.tag):
-        if cfg.category_id is not None and t.get("category_id") != cfg.category_id:
+        if not _in_scope(cfg, t):
             continue
         try:
             process_topic(cfg, dc, dc.get_topic(t["id"]))

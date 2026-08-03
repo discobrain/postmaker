@@ -3,6 +3,7 @@ it reuses the already-authenticated CLI. Each network drives its own system
 prompt from prompts/<key>.md."""
 
 import os
+import re
 import subprocess
 
 from .networks import Network
@@ -36,17 +37,28 @@ def generate(cfg, network: Network, title: str, body: str) -> list[str]:
     return _to_parts(network, out)
 
 
+_COUNTER_RESERVE = 8  # chars kept free for a "12/34 " counter prefix
+
+
 def _to_parts(network: Network, out: str) -> list[str]:
-    if network.split:
-        parts = [p for p in (s.strip() for s in _split_on_sep(out)) if p]
-    else:
-        parts = [out]
-    if network.split and len(parts) > 1:
-        n = len(parts)
-        parts = [f"{i}/{n} {p}" for i, p in enumerate(parts, 1)]
-    if network.limit:
-        parts = _enforce_limit(parts, network.limit)
-    return parts
+    if not network.split:
+        return [out]
+
+    limit = network.limit
+    blocks = [s.strip() for s in _split_on_sep(out) if s.strip()]
+
+    # Fit each author-intended block, reserving room for a counter in case we
+    # end up with a thread.
+    reserved: list[str] = []
+    for b in blocks:
+        reserved.extend(_fit(b, limit - _COUNTER_RESERVE) if limit else [b])
+
+    if len(reserved) <= 1:
+        # single post: no counter needed, use the full limit
+        return _fit(blocks[0], limit) if (blocks and limit) else blocks
+
+    n = len(reserved)
+    return [f"{i}/{n} {p}" for i, p in enumerate(reserved, 1)]
 
 
 def _split_on_sep(text: str) -> list[str]:
@@ -62,18 +74,39 @@ def _split_on_sep(text: str) -> list[str]:
     return out
 
 
-def _enforce_limit(parts: list[str], limit: int) -> list[str]:
-    result: list[str] = []
-    for p in parts:
-        if len(p) <= limit:
-            result.append(p)
+def _sentences(text: str) -> list[str]:
+    parts = re.split(r"(?<=[.!?…])\s+|\n+", text.strip())
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _fit(text: str, limit: int) -> list[str]:
+    """Pack text into <=limit chunks on sentence boundaries; word-wrap only a
+    single sentence that is itself longer than the limit."""
+    text = text.strip()
+    if len(text) <= limit:
+        return [text]
+    chunks, cur = [], ""
+    for s in _sentences(text):
+        candidate = f"{cur} {s}".strip()
+        if len(candidate) <= limit:
+            cur = candidate
+            continue
+        if cur:
+            chunks.append(cur)
+            cur = ""
+        if len(s) <= limit:
+            cur = s
         else:
-            result.extend(_hard_wrap(p, limit))
-    return result
+            wrapped = _hard_wrap(s, limit)
+            chunks.extend(wrapped[:-1])
+            cur = wrapped[-1]
+    if cur:
+        chunks.append(cur)
+    return chunks
 
 
 def _hard_wrap(text: str, limit: int) -> list[str]:
-    """Deterministic fallback: word-wrap an over-limit part into <=limit chunks."""
+    """Last-resort word wrap for a single over-limit sentence."""
     chunks, cur = [], ""
     for word in text.split():
         candidate = f"{cur} {word}".strip()
