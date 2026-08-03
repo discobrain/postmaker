@@ -10,9 +10,10 @@ class Network:
     label: str
     emoji: str
     limit: int | None   # per-post character limit; None = unlimited
-    split: bool         # allow splitting into a numbered thread on overflow
+    split: bool         # allow splitting into a thread on overflow
     prompt: str         # path to the translation/adaptation system prompt
     template: str       # path to the Discourse comment template
+    backlog: str | None # URL of this network's backlog topic (optional)
 
 
 def draft_tag(key: str) -> str:

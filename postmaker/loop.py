@@ -97,6 +97,15 @@ def check(cfg, dc: Discourse) -> None:
         )
 
 
+def show(cfg, dc: Discourse, topic_id: int) -> None:
+    """Read-only: print raw markdown of every comment in a topic."""
+    topic = dc.get_topic(topic_id)
+    log(f"topic {topic_id}: {topic.get('title')!r}  tags={sorted(topic.get('tags') or [])}")
+    for p in (topic.get("post_stream") or {}).get("posts") or []:
+        print(f"\n--- #{p.get('post_number')} by {p.get('username')} (id {p['id']}) ---")
+        print(dc.get_post_raw(p["id"]))
+
+
 def _in_scope(cfg, t: dict) -> bool:
     return cfg.category_id is None or t.get("category_id") == cfg.category_id
 

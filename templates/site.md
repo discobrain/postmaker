@@ -1,5 +1,7 @@
-## 🌐 Site draft
+[:alarm_clock: Site Backlog]({{BACKLOG}})
+
+[details="Site"]
 
 {{PARTS}}
 
-_Review, edit if needed, then approve with a 👍 like._
+[/details]

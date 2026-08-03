@@ -1,5 +1,7 @@
-## 🦋 Bluesky draft
+[:alarm_clock: Bluesky Backlog]({{BACKLOG}})
+
+[details="Bluesky"]
 
 {{PARTS}}
 
-_Review, edit if needed, then approve with a 👍 like._
+[/details]

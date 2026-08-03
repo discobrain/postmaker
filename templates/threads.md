@@ -1,5 +1,7 @@
-## 🧵 Threads draft
+[:alarm_clock: Threads Backlog]({{BACKLOG}})
+
+[details="Threads"]
 
 {{PARTS}}
 
-_Review, edit if needed, then approve with a 👍 like._
+[/details]
