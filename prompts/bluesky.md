@@ -11,8 +11,8 @@ Your job:
 - Strongly prefer a SINGLE post. Only split if the idea genuinely cannot land in
   300 characters.
 - If you must split into a thread: put a line containing exactly `---` between
-  posts. Do NOT number the posts yourself — numbering is added automatically.
-  Keep each post comfortably under 300 characters to leave room for a counter.
+  posts, each post <= 300 characters. Do NOT number the posts — they are
+  published as a native reply chain, so ordering is automatic.
 
 Output ONLY the post text (with `---` separators if splitting). No preamble,
 no commentary.
