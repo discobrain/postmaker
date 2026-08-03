@@ -18,18 +18,27 @@ import re
 import shutil
 import subprocess
 import tempfile
+from dataclasses import dataclass, field
 
 MAX_ATTEMPTS = 3
+
+_IMG_RE = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
+
+
+@dataclass
+class Post:
+    text: str
+    images: list[str] = field(default_factory=list)
 
 
 class GenError(RuntimeError):
     pass
 
 
-def generate_all(cfg, title: str, body: str, networks: list) -> dict[str, list[str]]:
+def generate_all(cfg, title: str, body: str, networks: list) -> dict[str, list[Post]]:
     """Generate every network in `networks` in one session.
 
-    Returns {network_key: [post, ...]}. Raises GenError if, after MAX_ATTEMPTS,
+    Returns {network_key: [Post, ...]}. Raises GenError if, after MAX_ATTEMPTS,
     a network is missing output or still over its limit — better to skip than
     post something broken."""
     networks = list(networks)
@@ -38,6 +47,8 @@ def generate_all(cfg, title: str, body: str, networks: list) -> dict[str, list[s
     for n in networks:
         if not os.path.exists(n.prompt):
             raise GenError(f"missing prompt file: {n.prompt}")
+
+    valid_images = set(_IMG_RE.findall(body))
 
     work = tempfile.mkdtemp(prefix="postmaker-")
     try:
@@ -50,7 +61,7 @@ def generate_all(cfg, title: str, body: str, networks: list) -> dict[str, list[s
         for _ in range(MAX_ATTEMPTS):
             for n in networks:
                 _clear(os.path.join(work, "out", n.key))
-            self_prompt = _build_instruction(cfg, networks) + extra
+            self_prompt = _build_instruction(cfg, networks, bool(valid_images)) + extra
             proc = subprocess.run(
                 [
                     cfg.claude_bin,
@@ -69,7 +80,8 @@ def generate_all(cfg, title: str, body: str, networks: list) -> dict[str, list[s
                 raise GenError(f"claude failed: {proc.stderr.strip()[:500]}")
 
             results = {
-                n.key: _read_parts(os.path.join(work, "out", n.key)) for n in networks
+                n.key: _read_parts(os.path.join(work, "out", n.key), valid_images)
+                for n in networks
             }
             missing = [n.key for n in networks if not results[n.key]]
             if missing:
@@ -91,20 +103,28 @@ def generate_all(cfg, title: str, body: str, networks: list) -> dict[str, list[s
         shutil.rmtree(work, ignore_errors=True)
 
 
-def generate(cfg, network, title: str, body: str) -> list[str]:
+def generate(cfg, network, title: str, body: str) -> list[Post]:
     """Single-network convenience wrapper (used by the `gen` CLI command)."""
     return generate_all(cfg, title, body, [network]).get(network.key, [])
 
 
-def _build_instruction(cfg, networks: list) -> str:
+def _build_instruction(cfg, networks: list, has_images: bool) -> str:
     base = _read(cfg.base_prompt).strip() if os.path.exists(cfg.base_prompt) else ""
     lines = [
         base,
         "",
         "Write plain-text files (no Markdown, no formatting) exactly as specified "
-        "below. Each file contains ONLY that post's exact text — no headings, no "
-        "numbering, no commentary. Overwrite any files already present.",
+        "below. Each post's text file contains ONLY that post's exact text — no "
+        "headings, no numbering, no commentary. Overwrite any files already present.",
     ]
+    if has_images:
+        lines.append(
+            "note.md contains one or more images written as ![alt](ref). Keep the "
+            "image markup OUT of the .txt files. For any post that should carry "
+            "image(s), also write out/<network>/NN.img next to its NN.txt, with one "
+            "image ref per line, copied EXACTLY from note.md. Default images to the "
+            "first post (01) unless they clearly belong with a later post."
+        )
     for n in networks:
         spec = _read(n.prompt).strip()
         lines.append("")
@@ -122,10 +142,23 @@ def _build_instruction(cfg, networks: list) -> str:
     return "\n".join(lines)
 
 
-def _read_parts(out_dir: str) -> list[str]:
+def _read_parts(out_dir: str, valid_images: set[str]) -> list[Post]:
     files = glob.glob(os.path.join(out_dir, "*.txt"))
     files.sort(key=_natural_key)
-    return [t for t in (_read(f).strip() for f in files) if t]
+    posts = []
+    for f in files:
+        text = _read(f).strip()
+        if not text:
+            continue
+        img_path = f[: -len(".txt")] + ".img"
+        images = []
+        if os.path.exists(img_path):
+            for line in _read(img_path).splitlines():
+                ref = line.strip()
+                if ref and ref in valid_images and ref not in images:
+                    images.append(ref)  # only refs that really exist in the note
+        posts.append(Post(text=text, images=images))
+    return posts
 
 
 def _natural_key(path: str) -> int:
@@ -133,10 +166,10 @@ def _natural_key(path: str) -> int:
     return int(nums[0]) if nums else 0
 
 
-def _over_limit(network, parts: list[str]) -> list[tuple[int, int]]:
+def _over_limit(network, parts: list[Post]) -> list[tuple[int, int]]:
     if not network.limit:
         return []
-    return [(i, len(p)) for i, p in enumerate(parts, 1) if len(p) > network.limit]
+    return [(i, len(p.text)) for i, p in enumerate(parts, 1) if len(p.text) > network.limit]
 
 
 def _feedback(networks: list, over: dict) -> str:

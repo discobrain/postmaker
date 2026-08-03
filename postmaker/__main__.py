@@ -28,8 +28,10 @@ def _cmd_gen(argv: list[str]) -> int:
     note = sys.stdin.read()
     parts = generate(cfg, net, "Untitled", note)
     for i, p in enumerate(parts, 1):
-        print(f"--- {net.key} part {i}/{len(parts)} ({len(p)} chars) ---")
-        print(p)
+        print(f"--- {net.key} part {i}/{len(parts)} ({len(p.text)} chars) ---")
+        print(p.text)
+        for ref in p.images:
+            print(f"[image] {ref}")
     return 0
 
 

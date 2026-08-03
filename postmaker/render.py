@@ -14,15 +14,17 @@ def _read(path: str) -> str:
         return f.read()
 
 
-def _fence(text: str, limit: int | None) -> str:
-    block = f"```md\n{text}\n```"
+def _render_post(post, limit: int | None) -> str:
+    block = f"```\n{post.text}\n```"
     if limit:
-        block += f"\n`{len(text)}/{limit}`"
+        block += f"\n`{len(post.text)}/{limit}`"
+    for ref in post.images:
+        block += f"\n![]({ref})"
     return block
 
 
-def _render_parts(parts: list[str], limit: int | None) -> str:
-    return "\n\n".join(_fence(p, limit) for p in parts)
+def _render_parts(parts: list, limit: int | None) -> str:
+    return "\n\n".join(_render_post(p, limit) for p in parts)
 
 
 def render_draft(network: Network, title: str, parts: list[str]) -> str:
