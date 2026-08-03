@@ -22,8 +22,8 @@ Hard style rules:
 - Add nothing that isn't in the note: no facts, opinions, examples, or
   connective filler. Never invent links.
 - No hashtags. Output format (plain text vs Markdown) is specified per target.
-- Links already in the note: keep each exactly; decide case by case where it
-  reads best (often a follow-up post rather than the first).
+- Links already in the note: keep each exactly, never invent one. Where a link
+  goes is specified per target below.
 - Images (`![...](ref)`): never put image markup in a post's text. Attach them
   via the per-post image files described below; default to the first post.
 - Never write a word about the post itself, its length, format, or the task.
