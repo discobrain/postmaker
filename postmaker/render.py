@@ -15,7 +15,7 @@ def _read(path: str) -> str:
 
 
 def _render_post(post, limit: int | None) -> str:
-    block = f"```\n{post.text}\n```"
+    block = f"```md\n{post.text}\n```"
     if limit:
         block += f"\n`{len(post.text)}/{limit}`"
     for ref in post.images:
