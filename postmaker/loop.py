@@ -65,10 +65,39 @@ def _handled(tags: set[str], key: str) -> bool:
     return draft_tag(key) in tags or published_tag(key) in tags
 
 
+def _rebake(cfg, dc: Discourse, topic: dict, tags: set[str]) -> None:
+    """Force-regenerate: delete this bot's draft comments and drop their
+    <net>-draft tags plus the rebake tag, so the normal pass redraws them.
+    Keeps the service comment and any <net>-published. Mutates `tags` in place."""
+    tid = topic["id"]
+    label_to_key = {n.label: n.key for n in cfg.networks}
+    removed_nets: set[str] = set()
+    for p in dc.all_posts(topic):
+        if p.get("username") != cfg.api_username:
+            continue
+        m = re.search(r'\[details="([^"]+)"\]', dc.get_post_raw(p["id"]))
+        if m and m.group(1) in label_to_key:
+            removed_nets.add(label_to_key[m.group(1)])
+            log(f"topic {tid}: rebake, deleting {m.group(1)} draft (post {p['id']})")
+            if not cfg.dry_run:
+                dc.delete_post(p["id"])
+    new_tags = tags - {draft_tag(k) for k in removed_nets} - {cfg.rebake_tag}
+    if new_tags != tags:
+        if not cfg.dry_run:
+            dc.set_tags(tid, sorted(new_tags))
+        tags.clear()
+        tags.update(new_tags)
+
+
 def process_topic(cfg, dc: Discourse, topic: dict) -> None:
     tid = topic["id"]
     title = topic.get("title") or topic.get("fancy_title") or ""
     tags = set(topic.get("tags") or [])
+
+    # `rebake` tag -> force-regenerate this topic's drafts (then fall through).
+    if cfg.rebake_tag in tags:
+        log(f"topic {tid}: rebake requested")
+        _rebake(cfg, dc, topic, tags)
 
     to_draft = [n for n in cfg.networks if not _handled(tags, n.key)]
     if not to_draft:

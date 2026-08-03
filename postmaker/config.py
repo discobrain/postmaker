@@ -22,6 +22,7 @@ class Config:
     api_key: str
     api_username: str
     tag: str
+    rebake_tag: str
     category_id: int | None
     poll_interval: int
     claude_bin: str
@@ -93,6 +94,7 @@ def load(discourse_required: bool = True) -> Config:
         api_key=api_key,
         api_username=api_username,
         tag=os.environ.get("POSTMAKER_TAG", doc.get("tag", "public")),
+        rebake_tag=os.environ.get("POSTMAKER_REBAKE_TAG", doc.get("rebake_tag", "rebake")),
         category_id=_opt_int(
             os.environ.get("POSTMAKER_CATEGORY_ID", doc.get("category"))
         ),

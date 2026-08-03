@@ -4,6 +4,7 @@
 # and which prompt + comment template each one uses.
 
 tag = "public"              # topics carrying this tag get drafted
+rebake_tag = "rebake"       # tag a topic with this to force-regenerate its drafts
 category = 5                # only draft topics in this category id (omit = any)
 poll_interval = 60          # seconds between polls
 claude_model = "claude-opus-4-8"
