@@ -23,14 +23,6 @@ def log(msg: str) -> None:
     print(f"[postmaker] {msg}", flush=True)
 
 
-def _has_service(cfg, dc: Discourse, topic: dict) -> bool:
-    """True if this bot's service comment already exists in the topic."""
-    for p in dc.all_posts(topic):
-        if p.get("username") != cfg.api_username:
-            continue
-        if SERVICE_SENTINEL in dc.get_post_raw(p["id"]):
-            return True
-    return False
 
 
 def _note_refs(cfg, body: str) -> set[int]:
@@ -110,9 +102,11 @@ def process_topic(cfg, dc: Discourse, topic: dict) -> None:
         return
 
     # Reserved service comment, created BEFORE any draft so on a fresh note it
-    # lands right after the first post. Created once (skip if it already exists).
-    if not _has_service(cfg, dc, topic):
-        log(f"topic {tid}: creating service comment")
+    # lands right after the first post. Only reserve the slot when the note has
+    # no replies yet, so we never duplicate an existing service comment (the
+    # author often reserves it by hand).
+    if len(dc.all_posts(topic)) <= 1:
+        log(f"topic {tid}: reserving service comment")
         if not cfg.dry_run:
             dc.create_post(tid, SERVICE_COMMENT)
 
@@ -192,21 +186,22 @@ def reset(cfg, dc: Discourse, topic_id: int) -> None:
 
 
 def audit(cfg, dc: Discourse) -> None:
-    """Read-only: for each in-scope topic, whether this bot's service comment
-    is present, plus its tags."""
-    missing = []
+    """Read-only: for each in-scope topic, whether the service slot (post #2) is
+    taken. A topic with only the original post is 'fresh' and the drafter will
+    reserve a service comment; one with replies already has its #2 slot."""
+    fresh = []
     for t in dc.topics_with_tag(cfg.tag):
         if not _in_scope(cfg, t):
             continue
         topic = dc.get_topic(t["id"])
-        has = _has_service(cfg, dc, topic)
-        if not has:
-            missing.append(t["id"])
+        n = len(dc.all_posts(topic))
+        if n <= 1:
+            fresh.append(t["id"])
         print(
-            f"[{'ok ' if has else 'NO!'} service] id={t['id']} "
-            f"tags={sorted(topic.get('tags') or [])} :: {topic.get('title')}"
+            f"[{'FRESH, will reserve' if n <= 1 else 'has #2 already'}] "
+            f"id={t['id']} posts={n} :: {topic.get('title')}"
         )
-    log(f"service comment missing on {len(missing)} topic(s): {sorted(missing)}")
+    log(f"fresh topics (drafter will reserve a service comment): {sorted(fresh)}")
 
 
 def reset_all(cfg, dc: Discourse) -> None:
