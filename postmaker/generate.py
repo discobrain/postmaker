@@ -48,7 +48,8 @@ def generate_all(cfg, title: str, body: str, networks: list) -> dict[str, list[P
         if not os.path.exists(n.prompt):
             raise GenError(f"missing prompt file: {n.prompt}")
 
-    valid_images = set(_IMG_RE.findall(body))
+    image_order = list(dict.fromkeys(_IMG_RE.findall(body)))  # note order, deduped
+    valid_images = set(image_order)
 
     work = tempfile.mkdtemp(prefix="postmaker-")
     try:
@@ -83,6 +84,13 @@ def generate_all(cfg, title: str, body: str, networks: list) -> dict[str, list[P
                 n.key: _read_parts(os.path.join(work, "out", n.key), valid_images)
                 for n in networks
             }
+            # Safety net: never drop the note's images. If the model placed none
+            # for a network, attach them all to that network's first post.
+            if image_order:
+                for n in networks:
+                    parts = results[n.key]
+                    if parts and not any(p.images for p in parts):
+                        parts[0].images = list(image_order)
             missing = [n.key for n in networks if not results[n.key]]
             if missing:
                 problem = f"no output written for: {', '.join(missing)}"
@@ -120,10 +128,11 @@ def _build_instruction(cfg, networks: list, has_images: bool) -> str:
     if has_images:
         lines.append(
             "note.md contains one or more images written as ![alt](ref). Keep the "
-            "image markup OUT of the .txt files. For any post that should carry "
-            "image(s), also write out/<network>/NN.img next to its NN.txt, with one "
-            "image ref per line, copied EXACTLY from note.md. Default images to the "
-            "first post (01) unless they clearly belong with a later post."
+            "image markup OUT of the .txt files. Every image in the note MUST be "
+            "placed: for each post that carries image(s), also write "
+            "out/<network>/NN.img next to its NN.txt, one image ref per line, "
+            "copied EXACTLY from note.md. Put each image with the first post (01) "
+            "unless it clearly belongs with a later post. Do not drop any image."
         )
     for n in networks:
         spec = _read(n.prompt).strip()
