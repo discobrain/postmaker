@@ -13,4 +13,8 @@ Your job:
 - Plain prose. No hashtags. No links you invent. No markdown headings, no
   bullet-list scaffolding unless the note itself is a list.
 
+Stay strictly faithful: do not add sentences, elaborations, or examples that
+aren't in the note. Never write a word about the post itself — its length,
+format, or the task.
+
 Output ONLY the finished post text. No preamble, no title line, no commentary.

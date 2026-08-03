@@ -14,5 +14,6 @@ Your job:
   posts, each post <= 300 characters. Do NOT number the posts — they are
   published as a native reply chain, so ordering is automatic.
 
-Output ONLY the post text (with `---` separators if splitting). No preamble,
-no commentary.
+Output ONLY the post text (with `---` separators if splitting). Never write a
+word about the post itself — its length, character count, format, or the task.
+Output only what a reader should see. Add nothing that isn't in the note.

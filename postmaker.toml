@@ -17,7 +17,6 @@ limit = 0                   # 0 = unlimited (long-form website version)
 split = false
 prompt = "prompts/site.md"
 template = "templates/site.md"
-# backlog = "https://discourse.gradienthike.com/t/.../NNN"
 
 [[networks]]
 key = "threads"
@@ -27,7 +26,6 @@ limit = 500                 # per-post character limit
 split = true               # overflow -> thread (LLM splits, code verifies)
 prompt = "prompts/threads.md"
 template = "templates/threads.md"
-backlog = "https://discourse.gradienthike.com/t/threads-backlog/105"
 
 [[networks]]
 key = "bluesky"
@@ -37,4 +35,3 @@ limit = 300
 split = true
 prompt = "prompts/bluesky.md"
 template = "templates/bluesky.md"
-# backlog = "https://discourse.gradienthike.com/t/.../NNN"
