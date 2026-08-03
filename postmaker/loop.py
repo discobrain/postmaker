@@ -143,6 +143,38 @@ def check(cfg, dc: Discourse) -> None:
         )
 
 
+def reset(cfg, dc: Discourse, topic_id: int) -> None:
+    """Undo THIS bot's work on a topic: delete the drafts/service comments it
+    authored and drop the matching <net>-draft tags. Leaves other users' posts
+    and tags (e.g. a manual threads-draft) untouched. Respects POSTMAKER_DRY_RUN."""
+    topic = dc.get_topic(topic_id)
+    tags = set(topic.get("tags") or [])
+    label_to_key = {n.label: n.key for n in cfg.networks}
+    removed_nets: set[str] = set()
+
+    for p in (topic.get("post_stream") or {}).get("posts") or []:
+        if p.get("username") != cfg.api_username:
+            continue
+        raw = dc.get_post_raw(p["id"])
+        m = re.search(r'\[details="([^"]+)"\]', raw)
+        is_draft = bool(m and m.group(1) in label_to_key)
+        is_stats = "reserved for publication stats" in raw
+        if not (is_draft or is_stats):
+            continue
+        kind = m.group(1) if is_draft else "service"
+        log(f"topic {topic_id}: deleting {kind} comment (post {p['id']})")
+        if is_draft:
+            removed_nets.add(label_to_key[m.group(1)])
+        if not cfg.dry_run:
+            dc.delete_post(p["id"])
+
+    new_tags = tags - {draft_tag(k) for k in removed_nets}
+    if new_tags != tags:
+        log(f"topic {topic_id}: removing tags {sorted(tags - new_tags)}")
+        if not cfg.dry_run:
+            dc.set_tags(topic_id, sorted(new_tags))
+
+
 def show(cfg, dc: Discourse, topic_id: int) -> None:
     """Read-only: print raw markdown of every comment in a topic."""
     topic = dc.get_topic(topic_id)

@@ -82,3 +82,6 @@ class Discourse:
     def set_tags(self, topic_id: int, tags: list[str]) -> dict:
         """Replace the topic's full tag set (Discourse expects the complete list)."""
         return self._request("PUT", f"/t/-/{topic_id}.json", {"tags[]": tags})
+
+    def delete_post(self, post_id: int) -> dict:
+        return self._request("DELETE", f"/posts/{post_id}.json")
