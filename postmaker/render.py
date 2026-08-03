@@ -32,7 +32,3 @@ def render_draft(network: Network, title: str, parts: list[str]) -> str:
     body = tpl.replace("{{PARTS}}", _render_parts(parts, network.limit))
     body = body.replace("{{TITLE}}", title)
     return body.rstrip() + "\n"
-
-
-def render_stats(cfg) -> str:
-    return _read(cfg.stats_template).rstrip() + "\n"

@@ -27,7 +27,6 @@ class Config:
     claude_bin: str
     claude_model: str
     base_prompt: str
-    stats_template: str
     networks: list[Network]
     dry_run: bool
 
@@ -104,7 +103,6 @@ def load(discourse_required: bool = True) -> Config:
             "POSTMAKER_CLAUDE_MODEL", doc.get("claude_model", "claude-opus-4-8")
         ),
         base_prompt=doc.get("base_prompt", "prompts/base.md"),
-        stats_template=doc.get("stats_template", "templates/stats.md"),
         networks=_build_networks(doc.get("networks", [])),
         dry_run=_flag("POSTMAKER_DRY_RUN"),
     )

@@ -8,7 +8,6 @@ category = 5                # only draft topics in this category id (omit = any)
 poll_interval = 60          # seconds between polls
 claude_model = "claude-opus-4-8"
 base_prompt = "prompts/base.md"      # shared rules; each network adds a short spec
-stats_template = "templates/stats.md"
 
 [[networks]]
 key = "site"                # network key = base of its -draft/-published tags

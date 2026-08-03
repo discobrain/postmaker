@@ -95,11 +95,8 @@ def process_topic(cfg, dc: Discourse, topic: dict) -> None:
         return
 
     # Commit each network tag-FIRST, then post: if we lack permission to tag,
-    # the very first _set_tag raises before anything is posted — no orphaned
-    # comment, no duplicate on the next pass. The reserved service comment is
-    # created once, just before the first draft (so it sits right after post #1).
-    first_touch = not any(draft_tag(n.key) in tags for n in cfg.networks)
-    posted_stats = False
+    # the very first _set_tag raises before anything is posted, so there is no
+    # orphaned comment and no duplicate on the next pass.
     for net in draftable:
         parts = results.get(net.key) or []
         if not parts:
@@ -110,9 +107,6 @@ def process_topic(cfg, dc: Discourse, topic: dict) -> None:
             log(f"topic {tid}: [dry-run] {net.key} ({len(parts)} part(s))\n{comment}")
             continue
         _set_tag(cfg, dc, tid, tags, draft_tag(net.key))
-        if first_touch and not posted_stats:
-            dc.create_post(tid, render.render_stats(cfg))
-            posted_stats = True
         dc.create_post(tid, comment)
 
 
