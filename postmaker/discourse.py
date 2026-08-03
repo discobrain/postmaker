@@ -2,6 +2,7 @@
 of truth — this client never caches anything locally."""
 
 import json
+import os
 import time
 import urllib.error
 import urllib.parse
@@ -18,8 +19,9 @@ def _retry_after(detail: str) -> float:
 
 
 class Discourse:
-    def __init__(self, url: str, api_key: str, api_username: str):
+    def __init__(self, url: str, api_key: str, api_username: str, timeout: float | None = None):
         self.url = url.rstrip("/")
+        self.timeout = timeout or float(os.environ.get("POSTMAKER_HTTP_TIMEOUT", "90"))
         self.headers = {
             "Api-Key": api_key,
             "Api-Username": api_username,
@@ -38,7 +40,7 @@ class Discourse:
                 self.url + path, data=body, method=method, headers=headers
             )
             try:
-                with urllib.request.urlopen(req, timeout=30) as r:
+                with urllib.request.urlopen(req, timeout=self.timeout) as r:
                     raw = r.read().decode()
                     return json.loads(raw) if raw.strip() else {}
             except urllib.error.HTTPError as e:
@@ -49,6 +51,13 @@ class Discourse:
                 raise RuntimeError(
                     f"{method} {path} -> HTTP {e.code}: {detail}"
                 ) from None
+            except (TimeoutError, urllib.error.URLError) as e:
+                # slow/flaky network or a slow save — back off and retry
+                if attempt < 4:
+                    time.sleep(3 * (attempt + 1))
+                    continue
+                reason = getattr(e, "reason", e)
+                raise RuntimeError(f"{method} {path} -> {reason}") from None
 
     # --- reads -------------------------------------------------------------
 
