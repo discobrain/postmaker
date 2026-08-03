@@ -2,6 +2,7 @@
 
   postmaker run          poll forever, draft new public topics
   postmaker once         a single pass, then exit
+  postmaker topics       read-only: list tagged topics and their scope
   postmaker gen <net>    generate <net> from a note on stdin (no Discourse needed)
 """
 
@@ -39,6 +40,10 @@ def main() -> int:
     if cmd == "once":
         cfg = config.load()
         loop.run_once(cfg, Discourse(cfg.url, cfg.api_key, cfg.api_username))
+        return 0
+    if cmd == "topics":
+        cfg = config.load()
+        loop.list_scope(cfg, Discourse(cfg.url, cfg.api_key, cfg.api_username))
         return 0
     if cmd == "gen":
         return _cmd_gen(rest)

@@ -82,6 +82,19 @@ def process_topic(cfg, dc: Discourse, topic: dict) -> None:
         _ensure_tag(cfg, dc, tid, tags, net.key)
 
 
+def list_scope(cfg, dc: Discourse) -> None:
+    """Read-only: show which tagged topics are in scope. No generation, no posting."""
+    ts = dc.topics_with_tag(cfg.tag)
+    scope = f"category={cfg.category_id}" if cfg.category_id is not None else "any category"
+    log(f"tag='{cfg.tag}', {scope}: {len(ts)} topic(s) carry the tag")
+    for t in ts:
+        inscope = cfg.category_id is None or t.get("category_id") == cfg.category_id
+        print(
+            f"[{'IN ' if inscope else 'out'}] id={t['id']} "
+            f"cat={t.get('category_id')} tags={t.get('tags')} :: {t.get('title')}"
+        )
+
+
 def run_once(cfg, dc: Discourse) -> None:
     for t in dc.topics_with_tag(cfg.tag):
         if cfg.category_id is not None and t.get("category_id") != cfg.category_id:
